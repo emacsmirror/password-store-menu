@@ -4,9 +4,9 @@
 
 ;; Author: Reindert-Jan Ekker <info@rjekker.nl>
 ;; Maintainer: Reindert-Jan Ekker <info@rjekker.nl>
-;; Version: 1.0.1
+;; Version: 1.1.0
 ;; URL: https://github.com/rjekker/password-store-menu
-;; Package-Requires: ((emacs "29.1") (password-store "2.3.2"))
+;; Package-Requires: ((emacs "29.1") (password-store "2.3.2") (pass 2.0.1))
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; Keywords: convenience data files
 
@@ -37,6 +37,7 @@
 ;;; Code:
 
 (require 'password-store)
+(require 'pass)
 (require 'transient)
 (require 'vc)
 (require 'epa)
@@ -60,26 +61,26 @@ This is used by the `password-store-menu-enable' command."
 
 ;;; Public functions
 
-;;;###autoload
+;;;###autoload (autoload 'password-store-menu-view "password-store-menu")
 (defun password-store-menu-view (entry)
   "Show the contents of the selected password file ENTRY."
   (interactive (list (password-store--completing-read)))
   (view-file (password-store--entry-to-file entry)))
 
-;;;###autoload
+;;;###autoload (autoload 'password-store-menu-browse-and-copy "password-store-menu")
 (defun password-store-menu-browse-and-copy (entry)
   "Browse ENTRY using `password-store-url', and copy the secret to the kill ring."
   (interactive (list (password-store--completing-read)))
   (password-store-copy entry)
   (password-store-url entry))
 
-;;;###autoload
+;;;###autoload (autoload 'password-store-menu-dired "password-store-menu")
 (defun password-store-menu-dired ()
   "Open the password store directory in Dired."
   (interactive)
   (dired (password-store-dir)))
 
-;;;###autoload
+;;;###autoload (autoload 'password-store-menu-visit "password-store-menu")
 (defun password-store-menu-visit (entry)
   "Visit file for ENTRY."
   (interactive (list (password-store--completing-read)))
@@ -87,27 +88,27 @@ This is used by the `password-store-menu-enable' command."
       (find-file (password-store--entry-to-file entry))
     (password-store-menu-edit-mode)))
 
-;;;###autoload
+;;;###autoload (autoload 'password-store-menu-pull "password-store-menu")
 (defun password-store-menu-pull ()
   "Pull password store files from version control."
   (interactive)
   (let ((default-directory (password-store-dir)))
     (vc-pull)))
 
-;;;###autoload
+;;;###autoload (autoload 'password-store-menu-push "password-store-menu")
 (defun password-store-menu-push ()
   "Push password store files to version control."
   (interactive)
   (let ((default-directory (password-store-dir)))
     (vc-push)))
 
-;;;###autoload
+;;;###autoload (autoload 'password-store-menu-diff "password-store-menu")
 (defun password-store-menu-diff ()
   "Show vc diff for password store."
   (interactive)
   (vc-dir (password-store-dir)))
 
-;;;###autoload
+;;;###autoload (autoload 'password-store-menu-qr "password-store-menu")
 (defun password-store-menu-qr (entry)
   "Show QR for given password ENTRY."
   (interactive (list (password-store--completing-read t)))
@@ -132,7 +133,7 @@ This runs \"pass show --qrcode\" and adds all other ARGS."
 
 
 ;;; Inserting new entries
-;;;###autoload
+;;;###autoload (autoload 'password-store-menu-insert "password-store-menu")
 (defun password-store-menu-insert (entry password)
   "Insert a new ENTRY containing PASSWORD.
 
@@ -145,7 +146,7 @@ This wraps `password-store-insert' with some code to read a new entry."
   (when entry (password-store-insert entry password)))
 
 
-;;;###autoload
+;;;###autoload (autoload 'password-store-menu-insert-multiline "password-store-menu")
 (defun password-store-menu-insert-multiline (entry)
   "Insert a multi-line password ENTRY."
   (interactive (list (password-store-menu--completing-read-new-entry)))
@@ -278,7 +279,7 @@ transient--read-number."
    ("g" "Generate" password-store-menu--generate-run-transient)])
 
 
-;;;###autoload
+;;;###autoload (autoload 'transient-define-prefix "password-store-menu")
 (transient-define-prefix password-store-menu ()
   "Entry point for password store actions."
   ["Password Entry"
@@ -301,11 +302,12 @@ transient--read-number."
     ("V=" "Diff" password-store-menu-diff)
     ("Vp" "Pull" password-store-menu-pull)
     ("VP" "Push" password-store-menu-push)]
-   ["Store"
-    ("d" "Dired" password-store-menu-dired)]]
+   ["Explore"
+    ("d" "Dired" password-store-menu-dired)
+    ("p" "Pass" pass)]]
   [("!" "Clear secret from kill ring" password-store-clear)])
 
-;;;###autoload
+;;;###autoload (autoload 'password-store-menu-enable "password-store-menu")
 (defun password-store-menu-enable ()
   "Run this to setup `auto-mode-alist' and keybinding for `password-store-menu'."
   (interactive)
