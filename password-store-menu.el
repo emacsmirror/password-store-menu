@@ -117,19 +117,18 @@ This is used by the `password-store-menu-enable' command."
 (defun password-store-menu--run-show-qr (entry &rest args)
   "Show QR code for ENTRY in a buffer.
 
-This runs \"pass show --qrcode\" and adds all other ARGS."
-  (let ((arguments (append (list entry "show" "--qrcode") args))
-        (buf (generate-new-buffer "*password-store-qrcode*")))
-    (make-process
-     :name "password-store-gpg"
-     :command (cons password-store-executable (delq nil arguments))
-     :connection-type 'pipe
-     :buffer buf
-     :noquery t
-     :sentinel (lambda (_process _event)
-                 (with-current-buffer buf
-                   (view-mode t))
-                 (pop-to-buffer buf)))))
+This runs \"pass show\" and pipes the result through qrencode.
+We do it this way because on Mac OS, when \"imgcat\" is available,
+\"pass --qrcode\" will give results that we cannot display in emacs."
+  (let* ((buf  (generate-new-buffer "*password-store-qrcode*"))
+         (cmd (format "pass show %s %s | qrencode -t PNG -o -"
+                      entry
+                      (mapconcat 'shell-quote-argument args " ")))
+         (proc (start-process-shell-command "password-store-menu-qrcode-process" buf cmd)))
+    (set-process-sentinel proc (lambda (_process _event)
+                                 (with-current-buffer buf
+                                   (view-mode t))
+                                 (pop-to-buffer buf)))))
 
 
 ;;; Inserting new entries
