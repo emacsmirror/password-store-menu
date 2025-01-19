@@ -262,16 +262,26 @@ transient--read-number."
   "Return t when qrencode is on path."
   (executable-find "qrencode"))
 
-(transient-define-suffix password-store-menu--run-show-qr
-  (entry output-format)
-  "Show QR code for ENTRY in a buffer in selected OUTPUT-FORMAT."
-  (interactive (list (password-store--completing-read)
-                     (car (transient-args transient-current-command))))
-  (let* ((data (password-store-parse-entry entry))
+
+(defun password-store-menu--get-field (entry)
+  "Let the user choose a field (excluding the first line)
+from ENTRY and return it."
+  (let* ((data (cdr (password-store-parse-entry entry)))
          (fields (mapcar #'car data))
-         (selected-field (completing-read "Field: " fields nil 'match
-                                          nil nil 'secret))
-         (secret (alist-get selected-field data nil nil 'equal))
+         (selected-field (completing-read "Field: " fields nil 'match)))
+    (alist-get selected-field data nil nil 'equal)))
+
+
+(transient-define-suffix password-store-menu--run-show-qr
+  (entry &rest args)
+  "Show QR code for ENTRY."
+  (interactive (list (password-store--completing-read)
+                     (transient-args transient-current-command)))
+  (let* ((content (caar args))
+         (output-format (cadar args))
+         (secret (if (string= content "secret")
+                     (password-store-get entry)
+                   (password-store-menu--get-field entry)))
          (buf  (generate-new-buffer "*password-store-qrcode*"))
          (cmd (format "qrencode %s -o - %s"
                       (shell-quote-argument output-format)
@@ -299,9 +309,11 @@ transient--read-number."
 ;;;###autoload (autoload 'transient-define-prefix "password-store-menu-qr-transient")
 (transient-define-prefix password-store-menu-qr-transient ()
   "Generate qr codes for passwords using transient."
-  :value '("-tUTF8")
-  :incompatible '(("--in-place" "--force"))
-  [(password-store-menu--qr-type)
+  :value '("secret" "-tUTF8")
+  :incompatible '(("secret" "field"))
+  [("s" "Encode secret" "secret")
+   ("f" "Encode a field" "field")
+   (password-store-menu--qr-type)
    ("q" "Create QR Code" password-store-menu--run-show-qr)])
 
 
