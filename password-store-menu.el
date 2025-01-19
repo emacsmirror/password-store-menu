@@ -6,7 +6,7 @@
 ;; Maintainer: Reindert-Jan Ekker <info@rjekker.nl>
 ;; Version: 1.1.0
 ;; URL: https://github.com/rjekker/password-store-menu
-;; Package-Requires: ((emacs "29.1") (password-store "2.3.2") (pass "2.0.1"))
+;; Package-Requires: ((emacs "29.1") (password-store "2.3.2"))
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; Keywords: convenience data files
 
@@ -37,7 +37,6 @@
 ;;; Code:
 
 (require 'password-store)
-(require 'pass)
 (require 'transient)
 (require 'vc)
 (require 'epa)
@@ -331,8 +330,7 @@ transient--read-number."
     ("Vp" "Pull" password-store-menu-pull)
     ("VP" "Push" password-store-menu-push)]
    ["Explore"
-    ("d" "Dired" password-store-menu-dired)
-    ("p" "Pass" pass)]]
+    ("d" "Dired" password-store-menu-dired)]]
   [("!" "Clear secret from kill ring" password-store-clear)])
 
 ;;;###autoload (autoload 'password-store-menu-enable "password-store-menu")
