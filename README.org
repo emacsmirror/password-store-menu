@@ -18,6 +18,13 @@ The package adds a bunch of useful features, including:
 - Showing password QR code inside emacs in text or image format (PNG, SVG)
 - Generating QR Codes for fields as well as secrets
 
+** Features to be added
+I have some plans to support the following in the future:
+- searching password files using emacs *grep*
+- pass-otp
+- multiple password folders
+  
+
 ** QR Code support
 On some systems the command-line utility ~qrencode~ is automatically
 installed with ~pass~. If ~qrencode~ is in your path, this will be
