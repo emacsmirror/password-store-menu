@@ -39,6 +39,13 @@ opened in a special edit mode.
   (password-store-menu-enable)
 #+end_src
 
+** QR Code support
+On some systems the command-line utility ~qrencode~ is automatically
+installed with ~pass~. If ~qrencode~ is in your path, this will be
+detected and used.
+
+If you dont have ~qrencode~ or prefer elisp-native encoding, you can
+install [[https://github.com/ruediger/qrencode-el/tree/main][qrencode.el]] instead, and that will be used.
 
 ** Use-package
 With use-package it looks like this:

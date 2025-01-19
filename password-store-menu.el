@@ -108,10 +108,12 @@ This is used by the `password-store-menu-enable' command."
   (vc-dir (password-store-dir)))
 
 ;;;###autoload (autoload 'password-store-menu-qr "password-store-menu")
-(defun password-store-menu-qr (entry)
+(defun password-store-menu-qr ()
   "Show QR for given password ENTRY."
-  (interactive (list (password-store--completing-read t)))
-  (password-store-menu--run-show-qr entry))
+  (interactive)
+  (if (password-store-menu--qrencode-available-p)
+      (password-store-menu--qr-transient)
+    (message "Please install qrencode to create QR Codes.")))
 
 
 ;;; Inserting new entries
@@ -258,9 +260,15 @@ transient--read-number."
    ("g" "Generate" password-store-menu--generate-run-transient)])
 
 
-(defun password-store-menu--qrencode-available-p ()
-  "Return t when qrencode is on path."
+(defun password-store-menu--qrencode-ext-available-p ()
+  "Return t when we can create qr codes with an external command."
   (executable-find "qrencode"))
+
+
+(defun password-store-menu--qrencode-available-p ()
+  "Return t when we can create qr codes."
+  (or (require 'qrencode nil 'noerror)
+      (password-store-menu--qrencode-ext-available-p)))
 
 
 (defun password-store-menu--get-field (entry)
@@ -272,7 +280,24 @@ from ENTRY and return it."
     (alist-get selected-field data nil nil 'equal)))
 
 
-(transient-define-suffix password-store-menu--run-show-qr
+(defun password-store-menu--qr-external (secret output-format)
+  "Generate QR code for SECRET in OUTPUT-FORMAT using external script."
+  (let* ((buf (generate-new-buffer "*password-store-qrcode*"))
+         (cmd (format "qrencode %s -o - %s"
+                      (if (string= output-format "image")
+                          "-tPNG" "-tUTF8")
+                      (shell-quote-argument secret))))
+    (call-process-shell-command cmd nil buf)
+    (with-current-buffer buf
+      (if (string= "text" output-format)
+          (view-mode t)
+        (image-mode)))
+    (pop-to-buffer buf)))
+
+
+(declare-function qrencode-string "qrencode")
+
+(transient-define-suffix password-store-menu--qr-dispatch
   (entry &rest args)
   "Show QR code for ENTRY."
   (interactive (list (password-store--completing-read)
@@ -281,40 +306,24 @@ from ENTRY and return it."
          (output-format (cadar args))
          (secret (if (string= content "secret")
                      (password-store-get entry)
-                   (password-store-menu--get-field entry)))
-         (buf  (generate-new-buffer "*password-store-qrcode*"))
-         (cmd (format "qrencode %s -o - %s"
-                      (shell-quote-argument output-format)
-                      (shell-quote-argument secret))))
-    (call-process-shell-command cmd nil buf)
-    (with-current-buffer buf
-      (if (or (string= "-tUTF8" output-format)
-              (string= "-tASCII" output-format))
-          (view-mode t)
-        (image-mode)))
-    (pop-to-buffer buf)))
-
-
-(transient-define-infix password-store-menu--qr-type ()
-  :class 'transient-option
-  :argument "-t"
-  :key "o"
-  :description "Output format"
-  :prompt "Output format: "
-  :always-read t
-  :allow-empty nil
-  :choices '("PNG" "SVG" "ASCII" "UTF8"))
+                   (password-store-menu--get-field entry))))
+    (if (password-store-menu--qrencode-ext-available-p)
+        (password-store-menu--qr-external secret output-format)
+      (require 'qrencode)
+      (qrencode-string secret))))
 
 
 ;;;###autoload (autoload 'transient-define-prefix "password-store-menu-qr-transient")
-(transient-define-prefix password-store-menu-qr-transient ()
+(transient-define-prefix password-store-menu--qr-transient ()
   "Generate qr codes for passwords using transient."
-  :value '("secret" "-tUTF8")
-  :incompatible '(("secret" "field"))
-  [("s" "Encode secret" "secret")
-   ("f" "Encode a field" "field")
-   (password-store-menu--qr-type)
-   ("q" "Create QR Code" password-store-menu--run-show-qr)])
+  :value '("secret" "text")
+  :incompatible '(("secret" "field") ("text" "image"))
+  [["What to encode" ("s" "Encode secret" "secret")
+    ("f" "Encode a field" "field")]
+   ["Output format" :if password-store-menu--qrencode-ext-available-p
+    ("t" "Output text" "text")
+    ("i" "Output image" "image")]]
+  [("q" "Create QR Code" password-store-menu--qr-dispatch)])
 
 
 ;;;###autoload (autoload 'transient-define-prefix "password-store-menu")
@@ -328,7 +337,7 @@ from ENTRY and return it."
     ("o" "Browse and copy" password-store-menu-browse-and-copy)
     ("p" "Copy Secret" password-store-copy)
     ("v" "View" password-store-menu-view)
-    ("q" "QR code" password-store-menu-qr-transient :if password-store-menu--qrencode-available-p)
+    ("q" "QR code" password-store-menu--qr-transient :if password-store-menu--qrencode-available-p)
     ("q" :info "Install qrencode to enable QR codes" :if-not password-store-menu--qrencode-available-p)]
    ["Change"
     ("D" "Delete" password-store-remove)
