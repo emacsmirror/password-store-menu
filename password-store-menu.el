@@ -114,22 +114,6 @@ This is used by the `password-store-menu-enable' command."
   (interactive (list (password-store--completing-read t)))
   (password-store-menu--run-show-qr entry))
 
-(defun password-store-menu--run-show-qr (entry &rest args)
-  "Show QR code for ENTRY in a buffer.
-
-This runs \"pass show\" and pipes the result through qrencode.
-We do it this way because on Mac OS, when \"imgcat\" is available,
-\"pass --qrcode\" will give results that we cannot display in emacs."
-  (let* ((buf  (generate-new-buffer "*password-store-qrcode*"))
-         (cmd (format "pass show %s %s | qrencode -t PNG -o -"
-                      entry
-                      (mapconcat 'shell-quote-argument args " ")))
-         (proc (start-process-shell-command "password-store-menu-qrcode-process" buf cmd)))
-    (set-process-sentinel proc (lambda (_process _event)
-                                 (with-current-buffer buf
-                                   (view-mode t))
-                                 (pop-to-buffer buf)))))
-
 
 ;;; Inserting new entries
 ;;;###autoload (autoload 'password-store-menu-insert "password-store-menu")
@@ -241,6 +225,7 @@ Ask for confirmation unless FORCE is t."
     (setq length (or transient-length-arg password-store-password-length))
     (apply #'password-store--run-async `("generate" ,@args ,entry ,length))))
 
+
 (defun password-store-menu--read-length (prompt initial-input history)
   "Read a number for the password length, or return default if input empty.
 
@@ -274,6 +259,52 @@ transient--read-number."
    ("g" "Generate" password-store-menu--generate-run-transient)])
 
 
+(defun password-store-menu--qrencode-available-p ()
+  "Return t when qrencode is on path."
+  (executable-find "qrencode"))
+
+(transient-define-suffix password-store-menu--run-show-qr
+  (entry output-format)
+  "Show QR code for ENTRY in a buffer in selected OUTPUT-FORMAT."
+  (interactive (list (password-store--completing-read)
+                     (car (transient-args transient-current-command))))
+  (let* ((data (password-store-parse-entry entry))
+         (fields (mapcar #'car data))
+         (selected-field (completing-read "Field: " fields nil 'match
+                                          nil nil 'secret))
+         (secret (alist-get selected-field data nil nil 'equal))
+         (buf  (generate-new-buffer "*password-store-qrcode*"))
+         (cmd (format "qrencode %s -o - %s"
+                      (shell-quote-argument output-format)
+                      (shell-quote-argument secret))))
+    (call-process-shell-command cmd nil buf)
+    (with-current-buffer buf
+      (if (or (string= "-tUTF8" output-format)
+              (string= "-tASCII" output-format))
+          (view-mode t)
+        (image-mode)))
+    (pop-to-buffer buf)))
+
+
+(transient-define-infix password-store-menu--qr-type ()
+  :class 'transient-option
+  :argument "-t"
+  :key "o"
+  :description "Output format"
+  :prompt "Output format: "
+  :always-read t
+  :allow-empty nil
+  :choices '("PNG" "SVG" "ASCII" "UTF8"))
+
+
+(transient-define-prefix password-store-menu-qr-transient ()
+  "Generate qr codes for passwords using transient."
+  :value '("-tUTF8")
+  :incompatible '(("--in-place" "--force"))
+  [(password-store-menu--qr-type)
+   ("g" "Generate" password-store-menu--qr-test-new)])
+
+
 ;;;###autoload (autoload 'transient-define-prefix "password-store-menu")
 (transient-define-prefix password-store-menu ()
   "Entry point for password store actions."
@@ -285,7 +316,8 @@ transient--read-number."
     ("o" "Browse and copy" password-store-menu-browse-and-copy)
     ("p" "Copy Secret" password-store-copy)
     ("v" "View" password-store-menu-view)
-    ("q" "QR code" password-store-menu-qr)]
+    ("q" "QR code" password-store-menu-qr-transient :if password-store-menu--qrencode-available-p)
+    ("q" :info "Install qrencode to enable QR codes" :if-not password-store-menu--qrencode-available-p)]
    ["Change"
     ("D" "Delete" password-store-remove)
     ("e" "Edit (visit file)" password-store-menu-visit)

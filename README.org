@@ -15,7 +15,8 @@ The package adds a bunch of useful features, including:
 - Easy browsing and viewing of entries
 - Inserting multi-line passwords
 - Generating passwords with arguments (e.g. length, no-symbols)
-- Showing password QR code inside emacs
+- Showing password QR code inside emacs in text or image format (PNG, SVG)
+- Generating QR Codes for fields as well as secrets
 
 ** Setup
 This package is available through MELPA. You can use "package-install" to install it.
