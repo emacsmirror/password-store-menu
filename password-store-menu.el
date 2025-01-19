@@ -296,12 +296,13 @@ transient--read-number."
   :choices '("PNG" "SVG" "ASCII" "UTF8"))
 
 
+;;;###autoload (autoload 'transient-define-prefix "password-store-menu-qr-transient")
 (transient-define-prefix password-store-menu-qr-transient ()
   "Generate qr codes for passwords using transient."
   :value '("-tUTF8")
   :incompatible '(("--in-place" "--force"))
   [(password-store-menu--qr-type)
-   ("g" "Generate" password-store-menu--qr-test-new)])
+   ("q" "Create QR Code" password-store-menu--run-show-qr)])
 
 
 ;;;###autoload (autoload 'transient-define-prefix "password-store-menu")
