@@ -252,8 +252,7 @@ transient--read-number."
   "Generate new password using transient."
   :value `(nil nil nil ,(int-to-string password-store-password-length))
   :incompatible '(("--in-place" "--force"))
-  [
-   ("i" "In place" "--in-place")
+  [("i" "In place" "--in-place")
    ("f" "Force overwrite" "--force")
    ("n" "No symbols" "--no-symbols")
    (password-store-menu-generate-length)
@@ -318,11 +317,11 @@ from ENTRY and return it."
   "Generate qr codes for passwords using transient."
   :value '("secret" "text")
   :incompatible '(("secret" "field") ("text" "image"))
-  [["What to encode" ("s" "Encode secret" "secret")
-    ("f" "Encode a field" "field")]
+  [["What to encode" ("s" "Secret" "secret")
+    ("f" "Field" "field")]
    ["Output format" :if password-store-menu--qrencode-ext-available-p
-    ("t" "Output text" "text")
-    ("i" "Output image" "image")]]
+    ("t" "Text" "text")
+    ("i" "Image" "image")]]
   [("q" "Create QR Code" password-store-menu--qr-dispatch)])
 
 
