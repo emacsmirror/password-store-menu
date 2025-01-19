@@ -224,15 +224,11 @@ Ask for confirmation unless FORCE is t."
               (yes-or-no-p (format "Overwrite entry %s?" entry)))
       entry)))
 
-;;; The actual transient UI
-(transient-define-suffix password-store-menu--generate-run-transient
-  (entry &optional password-length)
-  "Generate a new password for ENTRY with PASSWORD-LENGTH.
 
-Default PASSWORD-LENGTH is `password-store-password-length'."
-  (interactive (list (password-store--completing-read)
-                     (and current-prefix-arg
-                          (abs (prefix-numeric-value current-prefix-arg)))))
+(transient-define-suffix password-store-menu--generate-run-transient
+  (entry)
+  "Generate a new password for ENTRY."
+  (interactive (list (password-store--completing-read)))
   (let ((transient-length-arg nil)
         (args nil)
         (length nil))
@@ -242,8 +238,7 @@ Default PASSWORD-LENGTH is `password-store-password-length'."
       (if (string-prefix-p "--" arg)
           (push arg args)
         (setq transient-length-arg arg)))
-    ;; for the value of length, prefix argument takes precedence over transient arg
-    (setq length (or password-length transient-length-arg password-store-password-length))
+    (setq length (or transient-length-arg password-store-password-length))
     (apply #'password-store--run-async `("generate" ,@args ,entry ,length))))
 
 (defun password-store-menu--read-length (prompt initial-input history)
@@ -288,7 +283,7 @@ transient--read-number."
     ("c" "Copy Secret" password-store-copy)
     ("f" "Copy Field" password-store-copy-field)
     ("o" "Browse and copy" password-store-menu-browse-and-copy)
-    ("p" "Copy Secret" password-store-copy)    
+    ("p" "Copy Secret" password-store-copy)
     ("v" "View" password-store-menu-view)
     ("q" "QR code" password-store-menu-qr)]
    ["Change"
