@@ -161,15 +161,16 @@ This wraps `password-store-insert' with some code to read a new entry."
       "")))
 
 
-(define-derived-mode password-store-menu-insert-mode text-mode "pass-insert"
-  "Major mode for editing new password-store entries."
-  (setq buffer-offer-save nil))
-
-
 (defvar-keymap password-store-menu-insert-mode-map
   :parent text-mode-map
   "C-c C-c" #'password-store-menu--insert-save
   "C-c C-k" #'password-store-menu--kill-insert-buffer)
+
+
+(define-derived-mode password-store-menu-insert-mode text-mode "pass-insert"
+  "Major mode for editing new password-store entries."
+  (setq buffer-offer-save nil))
+
 
 
 (defun password-store-menu--kill-insert-buffer (&optional force)
