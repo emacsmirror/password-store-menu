@@ -18,6 +18,14 @@ The package adds a bunch of useful features, including:
 - Showing password QR code inside emacs in text or image format (PNG, SVG)
 - Generating QR Codes for fields as well as secrets
 
+** QR Code support
+On some systems the command-line utility ~qrencode~ is automatically
+installed with ~pass~. If ~qrencode~ is in your path, this will be
+detected and used.
+
+If you dont have ~qrencode~ or prefer elisp-native encoding, you can
+install [[https://github.com/ruediger/qrencode-el/tree/main][qrencode.el]] instead, and that will be used.
+
 ** Setup
 This package is available through MELPA. You can use "package-install" to install it.
 
@@ -38,14 +46,6 @@ opened in a special edit mode.
   ;; Binds the key and enables password-store-menu-edit-mode
   (password-store-menu-enable)
 #+end_src
-
-** QR Code support
-On some systems the command-line utility ~qrencode~ is automatically
-installed with ~pass~. If ~qrencode~ is in your path, this will be
-detected and used.
-
-If you dont have ~qrencode~ or prefer elisp-native encoding, you can
-install [[https://github.com/ruediger/qrencode-el/tree/main][qrencode.el]] instead, and that will be used.
 
 ** Use-package
 With use-package it looks like this:
