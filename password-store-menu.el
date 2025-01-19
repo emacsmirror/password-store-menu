@@ -288,6 +288,7 @@ transient--read-number."
     ("c" "Copy Secret" password-store-copy)
     ("f" "Copy Field" password-store-copy-field)
     ("o" "Browse and copy" password-store-menu-browse-and-copy)
+    ("p" "Copy Secret" password-store-copy)    
     ("v" "View" password-store-menu-view)
     ("q" "QR code" password-store-menu-qr)]
    ["Change"
