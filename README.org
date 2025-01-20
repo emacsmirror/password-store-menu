@@ -15,7 +15,7 @@ The package adds a bunch of useful features, including:
 - Easy browsing and viewing of entries
 - Inserting multi-line passwords
 - Generating passwords with arguments (e.g. length, no-symbols)
-- Showing password QR code inside emacs in text or image format (PNG, SVG)
+- Showing password QR code inside emacs in text or image format
 - Generating QR Codes for fields as well as secrets
 
 ** Features to be added

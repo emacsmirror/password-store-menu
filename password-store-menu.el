@@ -317,7 +317,8 @@ from ENTRY and return it."
   "Generate qr codes for passwords using transient."
   :value '("secret" "text")
   :incompatible '(("secret" "field") ("text" "image"))
-  [["What to encode" ("s" "Secret" "secret")
+  [["What to encode"
+    ("s" "Secret" "secret")
     ("f" "Field" "field")]
    ["Output format" :if password-store-menu--qrencode-ext-available-p
     ("t" "Text" "text")
