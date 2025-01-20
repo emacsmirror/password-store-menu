@@ -17,12 +17,13 @@ The package adds a bunch of useful features, including:
 - Generating passwords with arguments (e.g. length, no-symbols)
 - Showing password QR code inside emacs in text or image format
 - Generating QR Codes for fields as well as secrets
-
+- Grep with support for emacs grep mode
+  
 ** Features to be added
 I have some plans to support the following in the future:
-- searching password files using emacs *grep*
-- pass-otp
+- otp
 - multiple password folders
+- adding files to the password store
   
 
 ** QR Code support
@@ -97,4 +98,9 @@ The following menu items are available:
 | V=  | Diff | Show VC diff |
 | Vp  | Pull | Pull from VC |
 | VP  | Push | Push to VC   |
+
+** Discover
+| Key | Name  | Description                               |
+| d   | Dired | Open password store folder with dired     |
+| G   | Grep  | Search password entries for text patterns |
 

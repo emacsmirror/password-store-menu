@@ -115,6 +115,12 @@ This is used by the `password-store-menu-enable' command."
       (password-store-menu--qr-transient)
     (message "Please install qrencode to create QR Codes.")))
 
+;;;###autoload (autoload 'password-store-menu-grp "password-store-menu")
+(defun password-store-menu-grep ()
+  "Search for text in password files."
+  (interactive)
+  (password-store-menu--grep-transient))
+
 
 ;;; Inserting new entries
 ;;;###autoload (autoload 'password-store-menu-insert "password-store-menu")
@@ -202,9 +208,8 @@ Ask for confirmation unless FORCE is t."
 
 (defun password-store-menu--completing-read-new-entry ()
   "Prompt for name of new pass entry, ask confirmation if it exists."
-  (let*
-      ((entry (password-store--completing-read))
-       (exists (file-exists-p (password-store--entry-to-file entry))))
+  (let* ((entry (password-store--completing-read))
+         (exists (file-exists-p (password-store--entry-to-file entry))))
     (when (or (not exists)
               (yes-or-no-p (format "Overwrite entry %s?" entry)))
       entry)))
@@ -296,8 +301,7 @@ from ENTRY and return it."
 
 (declare-function qrencode-string "qrencode")
 
-(transient-define-suffix password-store-menu--qr-dispatch
-  (entry &rest args)
+(transient-define-suffix password-store-menu--qr-dispatch (entry &rest args)
   "Show QR code for ENTRY."
   (interactive (list (password-store--completing-read)
                      (transient-args transient-current-command)))
@@ -312,7 +316,7 @@ from ENTRY and return it."
       (qrencode-string secret))))
 
 
-;;;###autoload (autoload 'transient-define-prefix "password-store-menu-qr-transient")
+;;;###autoload (autoload 'transient-define-prefix "password-store-menu--qr-transient")
 (transient-define-prefix password-store-menu--qr-transient ()
   "Generate qr codes for passwords using transient."
   :value '("secret" "text")
@@ -324,6 +328,97 @@ from ENTRY and return it."
     ("t" "Text" "text")
     ("i" "Image" "image")]]
   [("q" "Create QR Code" password-store-menu--qr-dispatch)])
+
+
+(defun password-store-menu--grep-entry (entry pattern grep-args output-buf)
+  "Run grep on a single ENTRY, searching for PATTERN given GREP-ARGS.
+Output will be sent to OUTPUT-BUF."
+  (with-temp-buffer
+    (let* ((cmd (format "%s show %s | grep -n --null %s %s"
+                        password-store-executable
+                        (shell-quote-argument entry)
+                        (mapconcat 'identity grep-args " ")
+                        (shell-quote-argument pattern)))
+           (retval (call-process-shell-command cmd nil t)))
+      (message "Grepping %s" entry)
+      (when (eq 0 retval)
+        (goto-char (point-min))
+        (while (not (eobp))
+          (insert (format "./%s.gpg:" entry))
+          (when (member "--count" grep-args)
+            ;; Fix output to match grep-mode expected format
+            (insert "1:"))
+          (forward-line))
+        (with-current-buffer output-buf
+          (setq buffer-read-only nil)
+          (goto-char (point-max)))
+        (insert-into-buffer output-buf)
+        (with-current-buffer output-buf (setq buffer-read-only t))))))
+
+
+;;;###autoload
+(defvar password-store-menu-grep-history nil "History list for password-store-menu grep.")
+
+(transient-define-suffix password-store-menu--grep (pattern args)
+  "Run grep for all password entries searching for PATTERN with ARGS."
+  (interactive (list
+                (read-string "Search pattern: " nil password-store-menu-grep-history)
+                (transient-args transient-current-command)))
+  (let ((buf (get-buffer-create "*password-store-grep*"))
+        (dir (car args))
+        (grep-args (cdr args)))
+    (with-current-buffer buf
+      (setq-local default-directory (password-store-dir)
+                  buffer-read-only nil)
+      (fundamental-mode)
+      (erase-buffer)
+      (insert (format "-*- mode: grep; default-directory: \"%s\" -*-\n" default-directory))
+      (insert (concat "grep: " (mapconcat 'identity grep-args " ") "\n\n"))
+      (grep-mode))
+    (pop-to-buffer buf)
+    (dolist (entry (password-store-list dir))
+      (password-store-menu--grep-entry entry pattern grep-args buf))
+    (pop-to-buffer buf)))
+
+
+(defun password-store-menu--grep-dir-reader (prompt &rest _)
+  "Reader for folder to grep in."
+  (read-directory-name prompt
+                       (expand-file-name "./" (password-store-dir))
+                       nil
+                       t))
+
+
+(transient-define-infix password-store-menu--grep-dir ()
+  :description "Subdir"
+  :class 'transient-option
+  :key "d"
+  :argument ""
+  :prompt "Search folder: "
+  :reader #'password-store-menu--grep-dir-reader
+  :always-read t)
+
+
+;;;###autoload (autoload 'transient-define-prefix "password-store-menu--grep-transient")
+(transient-define-prefix password-store-menu--grep-transient ()
+  "Search for text in password files."
+  :incompatible '(("--count" "--files-with-matches" "--files-without-matches")
+                  ("--extended-regexp" "--fixed-strings" "--basic-regexp")
+                  ("--word-regexp" "--line-regexp"))
+  :value `(,(password-store-dir) "--basic-regexp" "--count")
+  ["Search in"
+   (password-store-menu--grep-dir)]
+  ["Grep options"
+   ["Pattern"
+    ("E" "Regex" "--extended-regexp")
+    ("F" "Fixed string" "--fixed-strings")
+    ("G" "Basic pattern" "--basic-regexp")]
+   ["Match"
+    ("i" "Ignore case" "--ignore-case")
+    ("v" "Invert" "--invert-match")]
+   ["Output"
+    ("c" "Count only" "--count")]
+   [("g" "Run grep" password-store-menu--grep)]])
 
 
 ;;;###autoload (autoload 'transient-define-prefix "password-store-menu")
@@ -352,7 +447,8 @@ from ENTRY and return it."
     ("Vp" "Pull" password-store-menu-pull)
     ("VP" "Push" password-store-menu-push)]
    ["Explore"
-    ("d" "Dired" password-store-menu-dired)]]
+    ("d" "Dired" password-store-menu-dired)
+    ("G" "Grep" password-store-menu--grep-transient)]]
   [("!" "Clear secret from kill ring" password-store-clear)])
 
 ;;;###autoload (autoload 'password-store-menu-enable "password-store-menu")
