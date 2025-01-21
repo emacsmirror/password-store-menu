@@ -24,7 +24,7 @@ I have some plans to support the following in the future:
 - otp
 - multiple password folders
 - adding files to the password store
-  
+- add command to close all buffers visiting password entries  
 
 ** QR Code support
 On some systems the command-line utility ~qrencode~ is automatically
