@@ -6,7 +6,7 @@
 ;; Maintainer: Reindert-Jan Ekker <info@rjekker.nl>
 ;; Version: 1.1.0
 ;; URL: https://github.com/rjekker/password-store-menu
-;; Package-Requires: ((emacs "29.1") (password-store "2.3.2"))
+;; Package-Requires: ((emacs "29.1") (password-store "2.3.2") (transient "0.8.3"))
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; Keywords: convenience data files
 
