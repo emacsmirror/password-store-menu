@@ -40,6 +40,7 @@
 (require 'transient)
 (require 'vc)
 (require 'epa)
+(require 'cl-seq)
 
 
 (defcustom password-store-menu-edit-auto-commit t
@@ -55,10 +56,77 @@ This is used by the `password-store-menu-enable' command."
   :group 'password-store
   :type 'key)
 
+(defcustom password-store-menu-verification-skip-dirs
+  '(".git" ".extensions")
+  "List of directory names to skip when verifying a directory."
+  :group 'password-store
+  :type '(repeat string))
 
 (defconst password-store-menu--insert-buffer-name "*password-store-insert*")
 
 ;;; Public functions
+
+;;;###autoload
+(defun password-store-menu-get (entry &optional callback)
+  "Return password for ENTRY.
+
+Returns the first line of the password data.  When CALLBACK is
+non-`NIL', call CALLBACK with the first line instead.
+
+This is a re-implementation of `password-store-get', which has the
+unfortunate tendency to decrypt twice."
+  (let ((secret (let ((inhibit-message t))
+                  (auth-source-pass-get 'secret entry))))
+    (if (not callback) secret
+      (funcall callback secret))))
+
+;;;###autoload
+(defun password-store-menu-get-field (entry field &optional callback)
+  "Return FIELD for ENTRY.
+
+Returns the first line of the password data.  When CALLBACK is
+non-`NIL', call CALLBACK with the first line instead.
+
+This is a re-implementation of `password-store-get-field', which has the
+unfortunate tendency to decrypt twice."
+  (let ((secret (auth-source-pass-get field entry)))
+    (if (not callback) secret
+      (and secret (funcall callback secret)))))
+
+
+;;;###autoload
+(defun password-store-menu-copy (entry)
+  "Add password for ENTRY into the kill ring.
+
+Clear previous password from the kill ring.  Pointer to the kill
+ring is stored in `password-store-kill-ring-pointer'.  Password
+is cleared after `password-store-time-before-clipboard-restore'
+seconds.
+
+This is a re-implementation of `password-store-copy', which has the
+unfortunate tendency to decrypt twice."
+  (interactive (list (password-store--completing-read t)))
+  (password-store-menu-get
+   entry
+   (lambda (password)
+     (password-store--save-field-in-kill-ring entry password 'secret))))
+
+
+;;;###autoload
+(defun password-store-menu-copy-field (entry field)
+  "Add FIELD for ENTRY into the kill ring.
+
+This is a re-implementation of `password-store-copy-field', which has the
+unfortunate tendency to decrypt twice."
+  (interactive
+   (let ((entry (password-store--completing-read)))
+     (list entry (password-store-read-field entry))))
+  (password-store-menu-get-field
+   entry
+   field
+   (lambda (secret-value)
+     (password-store--save-field-in-kill-ring entry secret-value field))))
+
 
 ;;;###autoload (autoload 'password-store-menu-view "password-store-menu")
 (defun password-store-menu-view (entry)
@@ -70,7 +138,7 @@ This is used by the `password-store-menu-enable' command."
 (defun password-store-menu-browse-and-copy (entry)
   "Browse ENTRY using `password-store-url', and copy the secret to the kill ring."
   (interactive (list (password-store--completing-read)))
-  (password-store-copy entry)
+  (password-store-menu-copy entry)
   (password-store-url entry))
 
 ;;;###autoload (autoload 'password-store-menu-dired "password-store-menu")
@@ -86,6 +154,14 @@ This is used by the `password-store-menu-enable' command."
   (with-current-buffer
       (find-file (password-store--entry-to-file entry))
     (password-store-menu-edit-mode)))
+
+;;;###autoload (autoload 'password-store-menu-rename "password-store-menu")
+(defun password-store-menu-rename (entry new-entry)
+  "Rename ENTRY to NEW-ENTRY."
+  (interactive (let* ((e (password-store--completing-read t))
+                      (ne (read-string "Rename entry to: " e)))
+                 (list e ne)))
+  (message "%s" (password-store--run-rename entry new-entry t)))
 
 ;;;###autoload (autoload 'password-store-menu-pull "password-store-menu")
 (defun password-store-menu-pull ()
@@ -308,7 +384,7 @@ from ENTRY and return it."
   (let* ((content (caar args))
          (output-format (cadar args))
          (secret (if (string= content "secret")
-                     (password-store-get entry)
+                     (password-store-menu-get entry)
                    (password-store-menu--get-field entry))))
     (if (password-store-menu--qrencode-ext-available-p)
         (password-store-menu--qr-external secret output-format)
@@ -421,16 +497,235 @@ Output will be sent to OUTPUT-BUF."
    [("g" "Run grep" password-store-menu--grep)]])
 
 
+(defun password-store-menu--get-key-info (key &optional context)
+  "Get GPG key info for KEY, with optional egp CONTEXT.
+KEY can be a key id or fingerprint. This is used to find information
+about the encryption keys in .gpg-id.
+
+Return a plist containing:
+- :key : the main key identified by KEY
+- :enc-key: the encryption subkey
+- :enc-id : the id of the encryption subkey
+= :description : the description string"
+  (let ((epg-keys (epg-list-keys (or context (epg-make-context)) key)))
+    (when (> (length epg-keys) 1)
+      (error "Key id '%s' found in .gpg-id matches multiple keys" key))
+    (unless epg-keys
+      (error "Key id '%s' found in .gpg-id matches no keys" key))
+    (let* ((epg-key (car epg-keys))
+           (subkeys (epg-key-sub-key-list epg-key))
+           (encryption-keys
+            (seq-filter (lambda (subkey)
+                          (memq 'encrypt (epg-sub-key-capability subkey)))
+                        subkeys)))
+      (when (> (length encryption-keys) 1)
+        ;; This should be impossible
+        (error "Key id '%s' found in .gpg-id has multiple encryption subkeys" key))
+      (unless encryption-keys
+        (error "Key id '%s' found in .gpg-id has no encryption subkeys" key))
+
+      (list
+       :key epg-key
+       :enc-key (car encryption-keys)
+       :enc-id (epg-sub-key-id (car encryption-keys))
+       :description (epg-user-id-string (car (epg-key-user-id-list epg-key)))))))
+
+
+(defun password-store-menu--get-gpg-id-info (file &optional context)
+  "Get information about intended recipients for FILE, with optional epg CONTEXT.
+
+This returns key information from .gpg-id, by calling
+`password-store-menu--get-key-info' for each line and returning
+a list of key-info results."
+  (if-let* ((gpg-id-dir (locate-dominating-file file ".gpg-id" ))
+            (gpg-id-file (concat gpg-id-dir ".gpg-id"))
+            (key-ids (with-temp-buffer
+                       (insert-file-contents gpg-id-file)
+                       (split-string (buffer-string) "\n" :omit-nulls))))
+      (mapcar (lambda (key-id)
+                (password-store-menu--get-key-info key-id context))
+              key-ids)
+    (error "No .gpg-id found for \"%s\", is it a password folder?" file)))
+
+
+(defun password-store-menu--keys-info-to-recipients (keys-info)
+  "Convert list KEYS-INFO to list of recipient key ids."
+  (mapcar (lambda (key-info) (plist-get key-info :enc-id))
+          keys-info))
+
+(defun password-store-menu--get-file-recipients (file context)
+  "Retrieve encryption recipients for FILE using epg CONTEXT.
+
+This returns the actual recipients the file is encrypted with.
+This will signal an error when the file is not actually encrypted."
+  (mapcan (lambda (s)  (last (split-string s " ")))
+          (seq-filter (apply-partially #'string-prefix-p ":pubkey")
+                      (process-lines
+                       (epg-context-program (or context (epg-make-context)))
+                       "--list-only"
+                       "--list-packets"
+                       file))))
+
+(defun password-store-menu--verify-file (file recipients &optional context)
+  "Verifies that FILE is encrypted for RECIPIENTS, with optional epg CONTEXT.
+
+Return nil if recipients match and a string with a message otherwise.
+This is NOT the same as a GPG signature verification."
+  (condition-case-unless-debug nil
+      (let* ((file-recipients
+              (password-store-menu--get-file-recipients file
+                                                        (or context (epg-make-context))))
+             (diff (cl-set-exclusive-or recipients file-recipients :test 'equal)))
+        (when diff
+          (if-let ((extra (cl-set-difference file-recipients recipients :test 'equal)))
+              (format "File has recipients not listed in .gpg-id: %s" extra)
+            (format "File has missing recipients: %s" (cl-set-difference recipients file-recipients :test 'equal)))))
+    (error "GPG failed - file not encrypted or corrupt")))
+
+(defun password-store-menu--verify-file-p (file)
+  "Return t when we want to verify FILE."
+  (not (and
+        (file-directory-p file)
+        (or
+         (member (file-name-nondirectory (directory-file-name file))
+                 password-store-menu-verification-skip-dirs)
+         ;; skip dirs with their own gpg-id
+         (file-exists-p (expand-file-name ".gpg-id" file))))))
+
+(defun password-store-menu--verify-dir (dir recipients)
+  "Verify that all files in DIR are encrypted for RECIPIENTS."
+  (let ((failed 0)
+        (count 0))
+    (dolist (file
+             (mapcar #'expand-file-name
+                     (directory-files-recursively dir "" nil
+                                                  #'password-store-menu--verify-file-p)))
+      (unless (equal file (expand-file-name ".gpg-id" dir))
+        (setq count (+ 1 count))
+        (when-let ((message (password-store-menu--verify-file
+                             file
+                             recipients)))
+          (progn (insert (format "Verification of %s FAILED: " file)
+                         message "\n")
+                 (setq failed (+ 1 failed))))))
+    (insert "\n\n--------\n")
+    (if (= 0 failed)
+        (insert (format "Checked %s files: all good!" count))
+      (insert (format "%s files failed verification (%s files ok)" failed count)))))
+
+;;;###autoload
+(defun password-store-menu-verify-recipients (file-or-dir &optional show-only)
+  "Verify all files in FILE-OR-DIR are encrypted for recipients in .gpg-id.
+When SHOW-ONLY is non-nil, just show the recipients."
+  (interactive (list
+                (read-directory-name "Choose password folder to verify: "
+                                     (password-store-dir))))
+  (if-let* ((gpg-id-dir (locate-dominating-file file-or-dir ".gpg-id" ))
+            (gpg-id-file (concat gpg-id-dir ".gpg-id"))
+            (key-ids (with-temp-buffer
+                       (insert-file-contents gpg-id-file)
+                       (split-string (buffer-string) "\n" :omit-nulls)))
+            (keys-info (mapcar #'password-store-menu--get-key-info key-ids))
+            (buf (get-buffer-create (format "*pass-verify: %s*" file-or-dir))))
+      (with-current-buffer buf
+        (view-mode t)
+        (let ((inhibit-read-only t))
+          (erase-buffer)
+          (insert "Encryption key ids from " gpg-id-file "\n"
+                  "------------------\n"
+                  "(Note: these are the id's of the encryption subkeys,\n"
+                  "       which may differ from the actual values in .gpg-id)\n\n")
+          (dolist (key-info keys-info)
+            (insert (plist-get key-info :enc-id) " : "
+                    (plist-get key-info :description) "\n"))
+          (insert "------------------\n")
+          (unless show-only
+            (let ((recipients (password-store-menu--keys-info-to-recipients
+                               keys-info)))
+              (if (file-directory-p file-or-dir)
+                  (password-store-menu--verify-dir file-or-dir recipients)
+                (if-let ((message (password-store-menu--verify-file file-or-dir recipients)))
+                    (insert (format "Verification of %s FAILED:\n" file-or-dir)
+                            message)
+                  (insert (format "Verification of %s: OK" file-or-dir)))))))
+        (pop-to-buffer buf))
+    (error "No .gpg-id found in \"%s\", is it a password folder?" file-or-dir)))
+
+;;;###autoload
+(defun password-store-menu-verify-entry (entry)
+  "Verify that ENTRY is encrypted with correct recipients."
+  (interactive (list (password-store--completing-read)))
+  (let ((file (password-store--entry-to-file entry)))
+    (password-store-menu-verify-recipients file)))
+
+;;;###autoload
+(defun password-store-menu-show-recipients (dir)
+  "Read recipients for DIR from .gpg-id and show them in a buffer."
+  (interactive (list
+                (read-directory-name "Choose password folder: "
+                                     (password-store-dir))))
+  (password-store-menu-verify-recipients dir :show-only))
+
+;;;###autoload
+(defun password-store-menu-verify-dir (dir)
+  "Read recipients for DIR from .gpg-id and show them in a buffer."
+  (interactive (list
+                (read-directory-name "Choose password folder to verify: "
+                                     (password-store-dir))))
+  (password-store-menu-verify-recipients dir))
+
+(defun password-store-menu--init (dir)
+  "Read recipients for DIR and call pass init."
+  (let* ((subdir (file-relative-name (expand-file-name dir) (password-store-dir)))
+         (keys (epa-select-keys (epg-make-context)
+                                (format "Please select keys for encrypting passwords in %s" subdir)))
+         (fingerprints (mapcar (lambda (k)
+                                 (epg-sub-key-fingerprint (car (epg-key-sub-key-list k))))
+                               keys)))
+    (apply #'password-store--run-1
+           #'message
+           (append (list "init" "-p" subdir) fingerprints))))
+
+;;;###autoload
+(defun password-store-menu-init (dir)
+  "Read recipients for DIR, and (re)-initialize."
+  (interactive (list
+                (read-directory-name "Choose password folder to init: "
+                                     (password-store-dir))))
+  (if (not (file-exists-p dir))
+      (password-store-menu--init dir)
+    (if (not (file-directory-p dir))
+        (error "%s is not a directory; cannot initialize" dir)
+      (when (yes-or-no-p (format "Re-initialize recipients for %s (this will re-encrypt all files)?" dir))
+        (password-store-menu--init dir)))))
+
+;;;###autoload
+(defun password-store-menu-kill-all-buffers ()
+  (interactive)
+  (dolist (buf (match-buffers '(derived-mode . password-store-menu-edit-mode)))
+    (if (buffer-modified-p buf)
+        (kill-buffer-ask buf)
+      (kill-buffer buf))))
+
+;;;###autoload (autoload 'transient-define-prefix "password-store-menu--recipients-transient")
+(transient-define-prefix password-store-menu--recipients-transient ()
+  "Transient for gpg-related operations"
+  ["Recipients"
+   ("s" "Show recipients" password-store-menu-show-recipients)
+   ("e" "Verify entry recipients" password-store-menu-verify-entry)
+   ("d" "Verify all entries in dir" password-store-menu-verify-dir)
+   ("R" "Re-encrypt directory with new recipients" password-store-menu-init)])
+
 ;;;###autoload (autoload 'transient-define-prefix "password-store-menu")
 (transient-define-prefix password-store-menu ()
   "Entry point for password store actions."
-  ["Password Entry"
+  ["Password Store"
    ["Use"
     ("b" "Browse" password-store-url)
-    ("c" "Copy Secret" password-store-copy)
-    ("f" "Copy Field" password-store-copy-field)
+    ("c" "Copy Secret" password-store-menu-copy)
+    ("f" "Copy Field" password-store-menu-copy-field)
     ("o" "Browse and copy" password-store-menu-browse-and-copy)
-    ("p" "Copy Secret" password-store-copy)
+    ("p" "Copy Secret" password-store-menu-copy)
     ("v" "View" password-store-menu-view)
     ("q" "QR code" password-store-menu--qr-transient :if password-store-menu--qrencode-available-p)
     ("q" :info "Install qrencode to enable QR codes" :if-not password-store-menu--qrencode-available-p)]
@@ -441,15 +736,18 @@ Output will be sent to OUTPUT-BUF."
     ("i" "Insert password" password-store-menu-insert)
     ("I" "Insert multiline" password-store-menu-insert-multiline)
     ("g" "generate" password-store-menu-generate-transient :transient transient--do-exit)
-    ("r" "Rename" password-store-rename)]
-   ["VC" :if (lambda () (vc-responsible-backend (password-store-dir) t))
+    ("r" "Rename" password-store-menu-rename)]
+   ["Store"
+    ("+" "Init subfolder" password-store-menu-init)
+    ("d" "Dired" password-store-menu-dired)
+    ("G" "Grep" password-store-menu--grep-transient)
+    ("R" "Recipients" password-store-menu--recipients-transient)]
+   ["Version control" :if (lambda () (vc-responsible-backend (password-store-dir) t))
     ("V=" "Diff" password-store-menu-diff)
     ("Vp" "Pull" password-store-menu-pull)
-    ("VP" "Push" password-store-menu-push)]
-   ["Explore"
-    ("d" "Dired" password-store-menu-dired)
-    ("G" "Grep" password-store-menu--grep-transient)]]
-  [("!" "Clear secret from kill ring" password-store-clear)])
+    ("VP" "Push" password-store-menu-push)]]
+  [("!" "Clear secret from kill ring" password-store-clear)
+   ("X" "Kill all pass buffers" password-store-menu-kill-all-buffers)])
 
 ;;;###autoload (autoload 'password-store-menu-enable "password-store-menu")
 (defun password-store-menu-enable ()

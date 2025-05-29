@@ -15,6 +15,8 @@ The package adds a bunch of useful features, including:
 - Easy browsing and viewing of entries
 - Inserting multi-line passwords
 - Generating passwords with arguments (e.g. length, no-symbols)
+- Initializing a new password folder with interactive selection of encryption keys
+- Verification: check that your password entries are correctly encrypted
 - Showing password QR code inside emacs in text or image format
 - Generating QR Codes for fields as well as secrets
 - Grep with support for emacs grep mode
@@ -22,9 +24,7 @@ The package adds a bunch of useful features, including:
 ** Features to be added
 I have some plans to support the following in the future:
 - otp
-- multiple password folders
 - adding files to the password store
-- add command to close all buffers visiting password entries  
 
 ** QR Code support
 On some systems the command-line utility ~qrencode~ is automatically
@@ -93,14 +93,29 @@ The following menu items are available:
 | g   | Generate         | Generate a new password                                       |
 | r   | Rename           | Rename an entry                                               |
 
-** VC
+** Store
+| Key | Name           | Description                                        |
+|-----+----------------+----------------------------------------------------|
+| +   | Init subfolder | Initialize a new subfolder with its own recipients |
+| d   | Dired          | Open password store folder with dired              |
+| G   | Grep           | Search password entries for text patterns          |
+| R   | Recipients     | Recipient submenu (see below)                      |
+
+** Version Control
 | Key | Name | Description  |
+|-----+------+--------------|
 | V=  | Diff | Show VC diff |
 | Vp  | Pull | Pull from VC |
 | VP  | Push | Push to VC   |
 
-** Discover
-| Key | Name  | Description                               |
-| d   | Dired | Open password store folder with dired     |
-| G   | Grep  | Search password entries for text patterns |
+** About recipients
+Your password store contains a file =.gpg-id=, which holds a list of
+GPG keys to encrypt password entries for. Password-store-menu can help
+you edit these recipients with a friendly user interface and will
+re-encrypt your password entries for the new recipients.
 
+** Verification
+If you use different tools or more password entries around, it can
+happen that an entry is not actually encrypted for the correct list of
+recipients in =.gpg-id=. Password-store-menu can verify your entries
+for you to make sure that everything is encrypted correctly.
