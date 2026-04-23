@@ -363,7 +363,7 @@ from ENTRY and return it."
 (defun password-store-menu--qr-external (secret output-format)
   "Generate QR code for SECRET in OUTPUT-FORMAT using external script."
   (let* ((buf (generate-new-buffer "*password-store-qrcode*"))
-         (cmd (format "qrencode %s -o - %s"
+         (cmd (format "qrencode %s -o - -- %s"
                       (if (string= output-format "image")
                           "-tPNG" "-tUTF8")
                       (shell-quote-argument secret))))
